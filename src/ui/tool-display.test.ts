@@ -4,6 +4,8 @@ import { toolIcons } from "./icons.js";
 import { getToolDisplay, getToolHeaderSummary } from "./tool-display.js";
 
 const displayCases: Array<[ToolResultCard, { title: string; tone: string }]> = [
+  [{ tool: "list_skills", summary: { skills: 4 } }, { title: "Available skills", tone: "search" }],
+  [{ tool: "read_skill", skillName: "agent-browser" }, { title: "Loaded skill", tone: "read" }],
   [{ tool: "open_workspace", root: "/tmp/project" }, { title: "Opened workspace", tone: "workspace" }],
   [{ tool: "open_workspace", root: "/tmp/project", workspaceReused: true }, { title: "Reused workspace", tone: "workspace" }],
   [{ tool: "open_workspace", root: "/tmp/project", mode: "worktree" }, { title: "Opened workspace", tone: "workspace" }],
@@ -144,6 +146,11 @@ assert.deepEqual(
     summary: { mode: "worktree", agentsFiles: 1, skills: 4 },
   }),
   { kind: "text", text: "1 instruction · 4 skills" },
+);
+
+assert.deepEqual(
+  getToolHeaderSummary({ tool: "list_skills", summary: { skills: 12, total: 20 } }),
+  { kind: "text", text: "12 of 20 skills" },
 );
 
 assert.deepEqual(

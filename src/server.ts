@@ -53,6 +53,12 @@ import { createReviewCheckpointManager } from "./review-checkpoints.js";
 import { openAiConversationScopeId } from "./request-meta.js";
 import { shutdownHttpServer } from "./server-shutdown.js";
 import { formatPathForPrompt } from "./skills.js";
+import {
+  filterGlobalSkills,
+  findGlobalSkill,
+  loadGlobalSkills,
+  resolveGlobalSkillReadPath,
+} from "./global-skills.js";
 import { createWorkspaceStore } from "./workspace-store.js";
 import { formatAgentsPath, WorkspaceRegistry } from "./workspaces.js";
 import { summarizeLocalAgentProfile } from "./local-agent-profiles.js";
@@ -120,6 +126,7 @@ type ToolWidgetKind =
   | "search"
   | "directory"
   | "shell"
+  | "skills"
   | "show_changes";
 
 interface ToolDefinitionMeta extends Record<string, unknown> {
@@ -165,6 +172,8 @@ function toolWidgetDescriptorMeta(
 }
 
 const toolNames = {
+  listSkills: "list_skills",
+  readSkill: "read_skill",
   openWorkspace: "open_workspace",
   read: "read",
   write: "write",
@@ -198,9 +207,12 @@ function serverInstructions(config: ServerConfig): string {
     config.widgets === "changes"
       ? " If the turn successfully modifies files by creating, editing, overwriting, deleting, moving, or applying patches, call show_changes exactly once for that workspace after the final related file change and before your final response so the user can inspect the aggregate diff for that turn. Do not call it after every individual file change; do not skip it because individual file-change tools already returned diffs."
       : "";
+  const globalSkillsInstruction = config.skillsEnabled
+    ? ` Global Agent Skills are available without a workspace. If the user sends exactly "$" or asks to discover available skills, call ${toolNames.listSkills}. A bare "$" is a complete discovery request: present the returned skill list to the user instead of asking for more input. If a user message starts with "$<skill-name>", treat it as an explicit request to use that global skill: call ${toolNames.readSkill} with that skill name before acting, and treat the remainder of the message as the task input. If ${toolNames.readSkill} reports no exact match, call ${toolNames.listSkills} with the selector as query to show close matches. Do not open a workspace merely to discover or read a global skill; open one only if the task itself later needs project files or commands. Skills with modelInvocable=false must not be selected automatically, but may be used after an explicit "$<skill-name>" request.`
+    : "";
 
   if (config.toolMode === "codex") {
-    return `Use DevSpace for coding work. Call ${toolNames.openWorkspace} once for each project folder or isolated worktree, then keep using its workspaceId. During continued work in the same project or worktree, do not call ${toolNames.openWorkspace} again. Open another workspace only when changing projects, switching checkout/worktree mode, creating another isolated worktree, or when the current workspaceId is rejected. Use ${toolNames.read} for direct file reads, apply_patch for all file modifications, exec_command for inspection, tests, builds, and other commands, and write_stdin to poll or interact with running processes. Follow instructions returned by ${toolNames.openWorkspace}; read applicable instruction and skill files before working in their scope.${artifactInstruction}${showChangesInstruction}`;
+    return `Use DevSpace for coding work.${globalSkillsInstruction} Call ${toolNames.openWorkspace} once for each project folder or isolated worktree, then keep using its workspaceId. During continued work in the same project or worktree, do not call ${toolNames.openWorkspace} again. Open another workspace only when changing projects, switching checkout/worktree mode, creating another isolated worktree, or when the current workspaceId is rejected. Use ${toolNames.read} for direct file reads, apply_patch for all file modifications, exec_command for inspection, tests, builds, and other commands, and write_stdin to poll or interact with running processes. Follow instructions returned by ${toolNames.openWorkspace}; read applicable instruction and skill files before working in their scope.${artifactInstruction}${showChangesInstruction}`;
   }
 
   const inspection = config.toolMode !== "full"
@@ -213,7 +225,7 @@ function serverInstructions(config: ServerConfig): string {
 
   const agentsMd = `Follow instructions returned by ${toolNames.openWorkspace}. Before working under a path listed in availableAgentsFiles, use ${toolNames.read} to inspect that instruction file and follow it. `;
 
-  return `Use DevSpace for coding work. Call ${toolNames.openWorkspace} once for each project folder or isolated worktree, then keep using its workspaceId. During continued work in the same project or worktree, do not call ${toolNames.openWorkspace} again. Open another workspace only when changing projects, switching checkout/worktree mode, creating another isolated worktree, or when the current workspaceId is rejected. ${agentsMd}${skills}${inspection}Prefer ${toolNames.edit} for targeted modifications, ${toolNames.write} only for new files or complete rewrites, and ${toolNames.shell} for tests, builds, git inspection, package scripts, and commands that are better executed by the shell. Do not create or modify files with ${toolNames.shell}; avoid shell redirection, heredocs, tee, sed -i, perl -i, node/python/ruby scripts, or any command whose purpose is to write project files.${artifactInstruction}${showChangesInstruction}`;
+  return `Use DevSpace for coding work.${globalSkillsInstruction} Call ${toolNames.openWorkspace} once for each project folder or isolated worktree, then keep using its workspaceId. During continued work in the same project or worktree, do not call ${toolNames.openWorkspace} again. Open another workspace only when changing projects, switching checkout/worktree mode, creating another isolated worktree, or when the current workspaceId is rejected. ${agentsMd}${skills}${inspection}Prefer ${toolNames.edit} for targeted modifications, ${toolNames.write} only for new files or complete rewrites, and ${toolNames.shell} for tests, builds, git inspection, package scripts, and commands that are better executed by the shell. Do not create or modify files with ${toolNames.shell}; avoid shell redirection, heredocs, tee, sed -i, perl -i, node/python/ruby scripts, or any command whose purpose is to write project files.${artifactInstruction}${showChangesInstruction}`;
 }
 
 function formatVisibleAgent(agent: {
@@ -251,6 +263,13 @@ const workspaceSkillOutputSchema = z.object({
   name: z.string(),
   description: z.string(),
   path: z.string(),
+});
+
+const globalSkillOutputSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  path: z.string(),
+  modelInvocable: z.boolean(),
 });
 
 const workspaceAgentsFileOutputSchema = z.object({
@@ -711,7 +730,7 @@ export function createMcpServer(
       title: "DevSpace",
       version: "0.1.0",
       description:
-        "Coding tools for project workspaces. Open each project or worktree once, then reuse its workspaceId.",
+        "Coding tools for project workspaces plus workspace-free discovery and reading of global Agent Skills.",
     },
     {
       instructions: serverInstructions(config),
@@ -748,6 +767,234 @@ export function createMcpServer(
       };
     },
   );
+
+  if (config.skillsEnabled) {
+    registerAppTool(
+      server,
+      toolNames.listSkills,
+      {
+        title: "Discover global skills",
+        description:
+          "List or search global Agent Skills without opening a workspace. A bare '$' is a complete discovery request; present the returned skill list to the user instead of asking for more input. Also call this when the user asks which skills are available or wants to discover a skill by a partial name. The catalog includes ~/.agents/skills, ~/.devspace/skills, DEVSPACE_AGENT_DIR/skills (normally ~/.codex/skills), and DEVSPACE_SKILL_PATHS.",
+        inputSchema: {
+          query: z
+            .string()
+            .optional()
+            .describe(
+              "Optional skill-name or description search. A leading '$' is accepted.",
+            ),
+          limit: z
+            .number()
+            .int()
+            .positive()
+            .max(200)
+            .optional()
+            .describe("Maximum number of matching skills to return. Defaults to 100."),
+        },
+        outputSchema: {
+          result: z.string(),
+          query: z.string().optional(),
+          total: z.number().int().nonnegative(),
+          skills: z.array(globalSkillOutputSchema),
+        },
+        ...toolWidgetDescriptorMeta(config, "skills"),
+        annotations: {
+          readOnlyHint: true,
+          openWorldHint: false,
+        },
+      },
+      async ({ query, limit }) => {
+        const startedAt = performance.now();
+        const loaded = loadGlobalSkills(config);
+        const matches = filterGlobalSkills(loaded.skills, query);
+        const selected = matches.slice(0, limit ?? 100);
+        const skills = selected.map((skill) => ({
+          name: skill.name,
+          description: skill.description,
+          path: formatPathForPrompt(skill.filePath),
+          modelInvocable: !skill.disableModelInvocation,
+        }));
+        const result =
+          skills.length > 0
+            ? [
+                query
+                  ? `Found ${matches.length} global skill${matches.length === 1 ? "" : "s"} matching ${JSON.stringify(query)}.`
+                  : `Available global skills: ${matches.length}.`,
+                ...skills.map(
+                  (skill) =>
+                    `$${skill.name} — ${skill.description}${skill.modelInvocable ? "" : " [explicit invocation only]"}`,
+                ),
+              ].join("\n")
+            : query
+              ? `No global skills matched ${JSON.stringify(query)}.`
+              : "No global skills were found.";
+
+        logToolCall(config, {
+          tool: toolNames.listSkills,
+          success: true,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+
+        return {
+          content: [textBlock(result)],
+          _meta: {
+            tool: toolNames.listSkills,
+            card: {
+              skills,
+              summary: {
+                skills: skills.length,
+                total: matches.length,
+                query: query ?? "",
+              },
+            },
+          },
+          structuredContent: {
+            result,
+            query,
+            total: matches.length,
+            skills,
+          },
+        };
+      },
+    );
+
+    registerAppTool(
+      server,
+      toolNames.readSkill,
+      {
+        title: "Read global skill",
+        description:
+          "Read a global Agent Skill without opening a workspace. Use the skill name from list_skills or an explicit user selector such as '$agent-browser'. Omit path to read SKILL.md first; path, when supplied, must be relative to that skill directory.",
+        inputSchema: {
+          name: z
+            .string()
+            .min(1)
+            .describe("Exact skill name. A leading '$' is accepted."),
+          path: z
+            .string()
+            .optional()
+            .describe(
+              "Optional path relative to the selected skill directory. Omit to read SKILL.md.",
+            ),
+          offset: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe("1-indexed line number to start reading from."),
+          limit: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe("Maximum number of lines to read."),
+        },
+        outputSchema: resultOutputSchema({
+          name: z.string(),
+          description: z.string(),
+          path: z.string(),
+          modelInvocable: z.boolean(),
+        }),
+        ...toolWidgetDescriptorMeta(config, "skills"),
+        annotations: {
+          readOnlyHint: true,
+          openWorldHint: false,
+        },
+      },
+      async ({ name, path, offset, limit }) => {
+        const startedAt = performance.now();
+        const loaded = loadGlobalSkills(config);
+        const skill = findGlobalSkill(loaded.skills, name);
+
+        if (!skill) {
+          const suggestions = filterGlobalSkills(loaded.skills, name)
+            .slice(0, 8)
+            .map((candidate) => `$${candidate.name}`);
+          const message = [
+            `Unknown global skill: ${name}`,
+            suggestions.length > 0
+              ? `Close matches: ${suggestions.join(", ")}`
+              : `Use ${toolNames.listSkills} to discover available global skills.`,
+          ].join("\n");
+          const content = [textBlock(message)];
+          logFailedToolResponse(
+            config,
+            { tool: toolNames.readSkill, path: name },
+            content,
+            startedAt,
+          );
+          return { isError: true, content };
+        }
+
+        let absolutePath: string;
+        try {
+          absolutePath = resolveGlobalSkillReadPath(skill, path);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const content = [textBlock(message)];
+          logFailedToolResponse(
+            config,
+            { tool: toolNames.readSkill, path: path ?? skill.filePath },
+            content,
+            startedAt,
+          );
+          return { isError: true, content };
+        }
+
+        const response = await readFileTool(
+          { path: absolutePath, offset, limit },
+          {
+            cwd: skill.baseDir,
+            root: skill.baseDir,
+            readRoots: [skill.baseDir],
+          },
+        );
+        if (response.isError) {
+          logFailedToolResponse(
+            config,
+            { tool: toolNames.readSkill, path: absolutePath },
+            response.content,
+            startedAt,
+          );
+          return response;
+        }
+
+        const formattedPath = formatPathForPrompt(absolutePath);
+        const summary = {
+          ...textSummary(response.content),
+          name: skill.name,
+          offset: offset ?? 1,
+          limited: limit !== undefined,
+        };
+        logToolCall(config, {
+          tool: toolNames.readSkill,
+          path: formattedPath,
+          success: true,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+
+        return {
+          ...response,
+          _meta: {
+            tool: toolNames.readSkill,
+            card: {
+              skillName: skill.name,
+              path: formattedPath,
+              summary,
+              payload: { content: response.content },
+            },
+          },
+          structuredContent: {
+            result: contentText(response.content),
+            name: skill.name,
+            description: skill.description,
+            path: formattedPath,
+            modelInvocable: !skill.disableModelInvocation,
+          },
+        };
+      },
+    );
+  }
 
   registerAppTool(
     server,
@@ -1903,7 +2150,17 @@ async function isMainModule(): Promise<boolean> {
 
 if (await isMainModule()) {
   const { app, config, close, localAgentProviders } = createServer();
-  const httpServer = app.listen(config.port, config.host, () => {
+  const httpServer = app.listen(config.port, config.host);
+  httpServer.once("error", (error) => {
+    console.error(
+      `devspace failed to listen on http://${config.host}:${config.port}/mcp: ${error.message}`,
+    );
+    process.exitCode = 1;
+    void close().catch((closeError) => {
+      console.error("devspace cleanup failed", closeError);
+    });
+  });
+  httpServer.once("listening", () => {
     console.log(
       `devspace listening on http://${config.host}:${config.port}/mcp`,
     );

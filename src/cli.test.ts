@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "./config.js";
@@ -17,6 +18,40 @@ for (const flag of ["-v", "--version"]) {
   }).trim();
 
   assert.equal(output, packageJson.version);
+}
+
+const occupiedPortServer = createNetServer();
+const portTestStateDir = mkdtempSync(join(tmpdir(), "devspace-cli-port-test-"));
+await new Promise<void>((resolve, reject) => {
+  occupiedPortServer.once("error", reject);
+  occupiedPortServer.listen(0, "127.0.0.1", resolve);
+});
+try {
+  const address = occupiedPortServer.address();
+  assert.ok(address && typeof address !== "string");
+  const result = spawnSync("node", ["--import", "tsx", "src/cli.ts", "serve"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      DEVSPACE_ALLOWED_ROOTS: process.cwd(),
+      DEVSPACE_HOST: "127.0.0.1",
+      DEVSPACE_OAUTH_OWNER_TOKEN: "test-owner-token-that-is-long-enough",
+      DEVSPACE_PORT: String(address.port),
+      DEVSPACE_PUBLIC_BASE_URL: "https://devspace.example.com",
+      DEVSPACE_STATE_DIR: portTestStateDir,
+    },
+    timeout: 10_000,
+  });
+
+  assert.notEqual(result.status, 0, "serve must fail when its configured port is occupied");
+  assert.doesNotMatch(result.stdout, /devspace listening/);
+  assert.match(result.stderr, /EADDRINUSE/);
+} finally {
+  await new Promise<void>((resolve, reject) => {
+    occupiedPortServer.close((error) => error ? reject(error) : resolve());
+  });
+  rmSync(portTestStateDir, { recursive: true, force: true });
 }
 
 const root = mkdtempSync(join(tmpdir(), "devspace-cli-agents-test-"));

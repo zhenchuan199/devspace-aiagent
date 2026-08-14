@@ -28,6 +28,25 @@ export type ToolHeaderSummary =
 
 export function getToolDisplay(card: ToolResultCard): ToolDisplay {
   switch (card.tool) {
+    case "list_skills": {
+      const query = card.summary?.query;
+      return {
+        icon: toolIcons.skills,
+        title: "Available skills",
+        label:
+          typeof query === "string" && query.length > 0
+            ? `$${query.replace(/^\$/, "")}`
+            : undefined,
+        tone: "search",
+      };
+    }
+    case "read_skill":
+      return {
+        icon: toolIcons.readFile,
+        title: "Loaded skill",
+        label: card.skillName ? `$${card.skillName}` : card.path,
+        tone: "read",
+      };
     case "open_workspace":
       return {
         icon: card.mode === "worktree" ? toolIcons.gitBranch : toolIcons.folderOpen,
@@ -130,6 +149,16 @@ export function getToolHeaderSummary(card: ToolResultCard): ToolHeaderSummary {
     };
   }
 
+  if (card.tool === "list_skills") {
+    const count = summaryNumber(summary, "skills");
+    const total = summaryNumber(summary, "total");
+    if (count !== undefined && total !== undefined && total > count) {
+      return { kind: "text", text: `${count} of ${total} skills` };
+    }
+    const label = countLabel(count, "skill");
+    return label ? { kind: "text", text: label } : { kind: "empty" };
+  }
+
   if (card.tool === "open_workspace") {
     const parts = [
       countLabel(summaryNumber(summary, "agentsFiles"), "instruction"),
@@ -146,7 +175,7 @@ export function getToolHeaderSummary(card: ToolResultCard): ToolHeaderSummary {
     return parts.length > 0 ? { kind: "text", text: parts.join(" · ") } : { kind: "empty" };
   }
 
-  if (card.tool === "grep" || card.tool === "read" || card.tool === "ls") {
+  if (card.tool === "grep" || card.tool === "read" || card.tool === "read_skill" || card.tool === "ls") {
     const lines = countLabel(summaryNumber(summary, "lines"), "line");
     return lines ? { kind: "text", text: lines } : { kind: "empty" };
   }

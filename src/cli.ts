@@ -214,7 +214,17 @@ async function serve(): Promise<void> {
   const { createServer } = await import("./server.js");
   const config = loadConfig();
   const { app, close, localAgentProviders } = createServer(config);
-  const httpServer = app.listen(config.port, config.host, () => {
+  const httpServer = app.listen(config.port, config.host);
+  httpServer.once("error", (error) => {
+    console.error(
+      `devspace failed to listen on http://${config.host}:${config.port}/mcp: ${error.message}`,
+    );
+    process.exitCode = 1;
+    void close().catch((closeError) => {
+      console.error("devspace cleanup failed", closeError);
+    });
+  });
+  httpServer.once("listening", () => {
     console.log(`devspace listening on http://${config.host}:${config.port}/mcp`);
     console.log(`public base url: ${config.publicBaseUrl}`);
     console.log(`allowed roots: ${config.allowedRoots.join(", ")}`);

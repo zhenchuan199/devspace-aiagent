@@ -1,6 +1,8 @@
 import type { App } from "@modelcontextprotocol/ext-apps";
 
 export type ToolName =
+  | "list_skills"
+  | "read_skill"
   | "open_workspace"
   | "show_changes"
   | "apply_patch"
@@ -26,6 +28,7 @@ export type ReviewFileType =
 
 export interface ToolResultCard {
   tool: ToolName;
+  skillName?: string;
   workspaceId?: string;
   path?: string;
   root?: string;
@@ -63,6 +66,7 @@ export interface ToolResultCard {
     name?: string;
     description?: string;
     path?: string;
+    modelInvocable?: boolean;
   }>;
   agentProviders?: Array<{
     name?: string;
@@ -96,6 +100,8 @@ export interface ToolPayload {
 
 export function isToolName(value: unknown): value is ToolName {
   return (
+    value === "list_skills" ||
+    value === "read_skill" ||
     value === "open_workspace" ||
     value === "show_changes" ||
     value === "apply_patch" ||
@@ -164,6 +170,10 @@ export function summaryNumber(
 }
 
 export function isExpandableCard(card: ToolResultCard): boolean {
+  if (card.tool === "list_skills") {
+    return Boolean(card.skills?.length);
+  }
+
   if (card.tool === "open_workspace") {
     return (
       Number(card.summary?.agentsFiles ?? 0) > 0 ||
@@ -187,6 +197,7 @@ export function isExpandableCard(card: ToolResultCard): boolean {
 }
 
 export function isInitiallyExpandedCard(card: ToolResultCard): boolean {
+  if (card.tool === "list_skills") return isExpandableCard(card);
   if (card.tool === "open_workspace") return isExpandableCard(card);
   if (isReviewTool(card.tool)) return isExpandableCard(card);
   if (isPatchTool(card.tool)) {

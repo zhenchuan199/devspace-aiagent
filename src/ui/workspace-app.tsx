@@ -27,6 +27,7 @@ import {
   type ToolDisplay,
 } from "./tool-display.js";
 import "./workspace-app.css";
+import "./skills-picker.css";
 
 interface MountedPayload {
   update(options: {
@@ -233,6 +234,11 @@ async function renderPayloadIfNeeded(): Promise<void> {
 
   if (errorMessage) {
     renderStatus(target, errorMessage, "error");
+    return;
+  }
+
+  if (card.tool === "list_skills") {
+    renderGlobalSkillsPayload(target, card);
     return;
   }
 
@@ -463,6 +469,124 @@ function setPayloadLoading(container: HTMLElement, loading: boolean): void {
 
   const button = header instanceof HTMLButtonElement ? header : null;
   if (button) button.setAttribute("aria-busy", String(loading));
+}
+
+function renderGlobalSkillsPayload(
+  container: HTMLElement,
+  card: ToolResultCard,
+): void {
+  unmountCurrentPayload();
+
+  const skills = card.skills ?? [];
+  if (skills.length === 0) {
+    renderStatus(container, "No matching global skills.");
+    return;
+  }
+
+  const wrapper = element("div", { className: "skill-picker" });
+  const intro = element("div", { className: "skill-picker-intro" });
+  intro.append(
+    element("span", {
+      className: "skill-picker-title",
+      text: "Choose a skill",
+    }),
+    element("span", {
+      className: "skill-picker-hint",
+      text: "Click a skill to send its $command to ChatGPT. You can also type $skill-name <task> directly in chat.",
+    }),
+  );
+
+  const taskInput = document.createElement("input");
+  taskInput.className = "skill-picker-task";
+  taskInput.type = "text";
+  taskInput.placeholder = "Optional task to append to the selected $skill";
+  taskInput.setAttribute("aria-label", "Optional task for the selected skill");
+
+  const status = element("div", {
+    className: "skill-picker-status",
+    ariaHidden: "true",
+  });
+  const list = element("div", {
+    className: "skill-picker-list pretty-scrollbar",
+  });
+
+  for (const skill of skills) {
+    const name = skill.name?.trim();
+    if (!name) continue;
+
+    const button = element("button", {
+      className: "skill-picker-item",
+      type: "button",
+      ariaLabel: `Use $${name}`,
+    });
+    const text = element("span", { className: "skill-picker-item-text" });
+    const heading = element("span", { className: "skill-picker-item-heading" });
+    heading.append(
+      element("span", {
+        className: "skill-picker-item-name",
+        text: name,
+      }),
+      element("span", {
+        className: "skill-picker-command",
+        text: `$${name}`,
+      }),
+    );
+    text.append(heading);
+
+    if (skill.description) {
+      text.append(
+        element("span", {
+          className: "skill-picker-description",
+          text: skill.description,
+        }),
+      );
+    }
+    if (skill.path) {
+      text.append(
+        element("span", {
+          className: "skill-picker-path",
+          text: skill.path,
+          title: skill.path,
+        }),
+      );
+    }
+    if (skill.modelInvocable === false) {
+      text.append(
+        element("span", {
+          className: "skill-picker-explicit",
+          text: "Explicit invocation only",
+        }),
+      );
+    }
+
+    button.append(text);
+    button.addEventListener("click", async () => {
+      if (!app) return;
+      const task = taskInput.value.trim();
+      const message = `$${name}${task ? ` ${task}` : ""}`;
+      button.disabled = true;
+      status.removeAttribute("aria-hidden");
+      status.textContent = `Sending ${message}...`;
+      try {
+        const result = await app.sendMessage({
+          role: "user",
+          content: [{ type: "text", text: message }],
+        });
+        if (result.isError) throw new Error("The host rejected the message.");
+        status.textContent = `Sent ${message}`;
+      } catch (sendError) {
+        status.textContent =
+          sendError instanceof Error
+            ? sendError.message
+            : "Unable to send the skill command.";
+        button.disabled = false;
+      }
+    });
+    list.append(button);
+  }
+
+  wrapper.append(intro, taskInput, list, status);
+  container.replaceChildren(wrapper);
 }
 
 function renderWorkspacePayload(container: HTMLElement, card: ToolResultCard): void {

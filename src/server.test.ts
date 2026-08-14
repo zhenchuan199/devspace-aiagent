@@ -58,6 +58,36 @@ test("open_workspace keeps lifecycle flags out of model output and preserves com
   assert.ok(Array.isArray(card.agents));
 });
 
+test("global skills can be listed and read without opening a workspace", async (t) => {
+  const context = await fixture(t);
+  const tools = await context.client.listTools();
+  const listSkillsTool = tools.tools.find((tool) => tool.name === "list_skills");
+  assert.ok(listSkillsTool);
+  assert.match(
+    listSkillsTool.description ?? "",
+    /A bare '\$' is a complete discovery request; present the returned skill list to the user/,
+  );
+  assert.ok(tools.tools.some((tool) => tool.name === "read_skill"));
+
+  const listed = await context.client.callTool({
+    name: "list_skills",
+    arguments: { query: "global-server-test-skill" },
+  });
+  const skills = structuredContent(listed).skills;
+  assert.ok(Array.isArray(skills));
+  assert.deepEqual(
+    skills.map((skill) => (skill as { name?: string }).name),
+    ["global-server-test-skill"],
+  );
+
+  const read = await context.client.callTool({
+    name: "read_skill",
+    arguments: { name: "$GLOBAL-SERVER-TEST-SKILL", path: "resource.txt" },
+  });
+  assert.equal(read.isError, undefined);
+  assert.equal(responseText(read), "global skill resource\n");
+});
+
 test("concurrent checkout opens return one full context and one reuse instruction", async (t) => {
   const context = await fixture(t);
   const [first, second] = await Promise.all([
@@ -182,8 +212,24 @@ async function fixture(t: TestContext, options: { git?: boolean } = {}): Promise
   const stateDir = join(root, ".state");
 
   await mkdir(join(project, ".devspace", "agents"), { recursive: true });
+  await mkdir(join(agentDir, "skills", "global-server-test-skill"), { recursive: true });
   await mkdir(agentDir, { recursive: true });
   await writeFile(join(agentDir, "AGENTS.md"), "global instructions\n");
+  await writeFile(
+    join(agentDir, "skills", "global-server-test-skill", "SKILL.md"),
+    [
+      "---",
+      "name: global-server-test-skill",
+      "description: Exercises workspace-free global skill tools.",
+      "---",
+      "",
+      "# Global Server Test Skill",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(agentDir, "skills", "global-server-test-skill", "resource.txt"),
+    "global skill resource\n",
+  );
   await writeFile(join(project, "AGENTS.md"), "project instructions\n");
   await writeFile(join(project, ".devspace", "agents", "reviewer.md"), [
     "---",

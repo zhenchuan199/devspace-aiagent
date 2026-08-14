@@ -10,7 +10,7 @@ import {
 } from "./card-types.js";
 
 test("the supported coding tools are recognized as card tools", () => {
-  for (const tool of ["apply_patch", "exec_command", "write_stdin"]) {
+  for (const tool of ["list_skills", "read_skill", "apply_patch", "exec_command", "write_stdin"]) {
     assert.equal(isToolName(tool), true, `${tool} should be a recognized card tool`);
   }
 });
@@ -86,6 +86,20 @@ test("a workspace card with details opens immediately", () => {
     }),
     true,
   );
+});
+
+test("a global skill picker opens immediately when it has skills", () => {
+  assert.equal(
+    isInitiallyExpandedCard({
+      tool: "list_skills",
+      skills: [{ name: "agent-browser", description: "Browser automation" }],
+    }),
+    true,
+  );
+});
+
+test("an empty global skill picker stays collapsed", () => {
+  assert.equal(isExpandableCard({ tool: "list_skills", skills: [] }), false);
 });
 
 test("a workspace card expands when it contains agent metadata", () => {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -9,6 +9,12 @@ import {
   loadWorkspaceSkills,
   resolveSkillReadPath,
 } from "./skills.js";
+import {
+  filterGlobalSkills,
+  findGlobalSkill,
+  loadGlobalSkills,
+  resolveGlobalSkillReadPath,
+} from "./global-skills.js";
 
 const root = await mkdtemp(join(tmpdir(), "devspace-skills-test-"));
 const originalHome = process.env.HOME;
@@ -193,6 +199,52 @@ try {
       (diagnostic) => diagnostic.collision?.name === "subagent-delegation",
     ),
     false,
+  );
+
+  const globalLoaded = loadGlobalSkills(config);
+  assert.equal(
+    globalLoaded.skills.some((skill) => skill.name === "agent-global-skill"),
+    true,
+  );
+  assert.equal(
+    globalLoaded.skills.some((skill) => skill.name === "agent-project-skill"),
+    false,
+  );
+  assert.equal(
+    globalLoaded.skills.some((skill) => skill.name === "claude-global-skill"),
+    true,
+  );
+  assert.equal(
+    globalLoaded.skills.some((skill) => skill.name === "claude-project-skill"),
+    false,
+  );
+  assert.equal(
+    globalLoaded.skills.some((skill) => skill.name === "devspace-local-skill"),
+    true,
+  );
+  assert.equal(findGlobalSkill(globalLoaded.skills, "$AGENT-GLOBAL-SKILL")?.name, "agent-global-skill");
+  assert.equal(
+    filterGlobalSkills(globalLoaded.skills, "$agent-global-skill")[0]?.name,
+    "agent-global-skill",
+  );
+  const globalSkill = findGlobalSkill(globalLoaded.skills, "agent-global-skill");
+  assert.ok(globalSkill);
+  assert.equal(resolveGlobalSkillReadPath(globalSkill), globalSkill.filePath);
+  assert.throws(
+    () => resolveGlobalSkillReadPath(globalSkill, "../outside.md"),
+    /outside the selected skill directory/,
+  );
+  const outsideSkillResources = join(root, "outside-skill-resources");
+  await mkdir(outsideSkillResources, { recursive: true });
+  await writeFile(join(outsideSkillResources, "secret.txt"), "outside skill directory\n");
+  await symlink(
+    outsideSkillResources,
+    join(globalSkill.baseDir, "escape"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  assert.throws(
+    () => resolveGlobalSkillReadPath(globalSkill, "escape/secret.txt"),
+    /outside the selected skill directory/,
   );
 
   const experimentalConfig = loadConfig({
