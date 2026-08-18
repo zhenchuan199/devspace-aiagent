@@ -36,6 +36,9 @@ const manager = new ProcessSessionManager({
 const node = process.platform === "win32"
   ? `"${process.execPath}"`
   : JSON.stringify(process.execPath);
+const workspaceRoot = process.platform === "win32"
+  ? process.cwd()
+  : "/tmp/devspace-workspace-a";
 
 const foreground = await manager.start({
   workspaceId: "workspace-a",
@@ -50,13 +53,16 @@ assert.equal(foreground.sessionId, undefined);
 
 const environment = await manager.start({
   workspaceId: "workspace-a",
-  workspaceRoot: "/tmp/devspace-workspace-a",
+  workspaceRoot,
   cwd: process.cwd(),
   command: `${node} -e "console.log([process.env.NO_COLOR, process.env.TERM, process.env.PAGER, process.env.GIT_PAGER, process.env.GH_PAGER, process.env.CODEX_CI, process.env.DEVSPACE_WORKSPACE_ID, process.env.DEVSPACE_WORKSPACE_ROOT].join(','))"`,
   yieldTimeMs: 2_000,
 });
 assert.equal(environment.running, false);
-assert.match(environment.output, /1,dumb,cat,cat,cat,1,workspace-a,\/tmp\/devspace-workspace-a/);
+assert.equal(
+  environment.output.trim(),
+  `1,dumb,cat,cat,cat,1,workspace-a,${workspaceRoot}`,
+);
 
 const background = await manager.start({
   workspaceId: "workspace-a",
@@ -114,13 +120,22 @@ const defaultInteractive = await manager.start({
 assert.equal(defaultInteractive.running, true);
 assert.ok(defaultInteractive.sessionId);
 
-const defaultInputResult = await manager.write({
+let defaultInputResult = await manager.write({
   workspaceId: "workspace-a",
   sessionId: defaultInteractive.sessionId,
   chars: "hello\n",
 });
+let defaultInputOutput = defaultInputResult.output;
+if (defaultInputResult.running) {
+  defaultInputResult = await manager.write({
+    workspaceId: "workspace-a",
+    sessionId: defaultInteractive.sessionId,
+    yieldTimeMs: 2_000,
+  });
+  defaultInputOutput += defaultInputResult.output;
+}
 assert.equal(defaultInputResult.running, false);
-assert.match(defaultInputResult.output, /default-input:hello/);
+assert.match(defaultInputOutput, /default-input:hello/);
 
 const noisyInteractive = await manager.start({
   workspaceId: "workspace-a",
@@ -180,6 +195,16 @@ if (buffered.sessionId) manager.terminate("workspace-a", buffered.sessionId);
 
 try {
   if (process.platform === "win32") {
+    const bash = await manager.start({
+      workspaceId: "workspace-a",
+      cwd: process.cwd(),
+      command: `[[ -n "$BASH_VERSION" ]] && printf 'bash:%s\\n' "$BASH_VERSION"`,
+      yieldTimeMs: 10_000,
+    });
+    assert.equal(bash.running, false);
+    assert.equal(bash.exitCode, 0);
+    assert.match(bash.output, /bash:\d/);
+
     const pty = await manager.start({
       workspaceId: "workspace-a",
       cwd: process.cwd(),

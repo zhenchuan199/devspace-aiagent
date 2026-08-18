@@ -325,7 +325,7 @@ export class ProcessSessionManager {
   private startPipe(session: ProcessSession, input: StartCommandInput): void {
     const shell = resolveShellCommand(input.command);
     const detached = process.platform !== "win32";
-    const child = spawn(input.command, {
+    const child = spawn(shell.executable, shell.args, {
       cwd: input.cwd,
       env: processEnvironment({
         workspaceId: input.workspaceId,
@@ -334,7 +334,6 @@ export class ProcessSessionManager {
       stdio: "pipe",
       windowsHide: true,
       detached,
-      shell: shell.executable,
     });
 
     session.process = {
@@ -346,6 +345,10 @@ export class ProcessSessionManager {
     child.stderr.on("data", (data: Buffer) => this.append(session, data.toString("utf8")));
     child.on("error", (error) => this.append(session, `${error.message}\n`));
     child.on("close", (code, signal) => this.finish(session, code ?? undefined, signal ?? undefined));
+    if (shell.stdin !== undefined) {
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(shell.stdin);
+    }
   }
 
   private async startPty(session: ProcessSession, input: StartCommandInput): Promise<void> {

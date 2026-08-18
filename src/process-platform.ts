@@ -1,10 +1,14 @@
 import { basename } from "node:path";
 import { spawnSync } from "node:child_process";
+import { getShellConfig } from "@earendil-works/pi-coding-agent";
 
 export interface ShellCommand {
   executable: string;
   args: string[];
+  stdin?: string;
 }
+
+type BashShellResolver = (customShellPath?: string) => ReturnType<typeof getShellConfig>;
 
 export interface KillableProcess {
   pid?: number;
@@ -36,11 +40,20 @@ export function resolveShellCommand(
   command: string,
   platform: NodeJS.Platform = process.platform,
   environment: NodeJS.ProcessEnv = process.env,
+  resolveBashShell: BashShellResolver = getShellConfig,
 ): ShellCommand {
   if (platform === "win32") {
+    const shell = resolveBashShell();
+    if (shell.commandTransport === "stdin") {
+      return {
+        executable: shell.shell,
+        args: shell.args,
+        stdin: command,
+      };
+    }
     return {
-      executable: environment.ComSpec ?? environment.COMSPEC ?? "cmd.exe",
-      args: ["/d", "/s", "/c", command],
+      executable: shell.shell,
+      args: [...shell.args, command],
     };
   }
 
