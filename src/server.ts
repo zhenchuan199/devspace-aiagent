@@ -2105,8 +2105,30 @@ export function createServer(
         );
         await server.connect(transport);
       } else {
-        sendJsonRpcError(res, 400, -32000, "No valid MCP session");
-        return;
+        const statelessTransport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+        });
+        const statelessServer = createMcpServer(
+          config,
+          workspaces,
+          reviewCheckpoints,
+          processSessions,
+          localAgentProviders,
+          incomingArtifactAdapters,
+        );
+        await statelessServer.connect(statelessTransport);
+        res.on("close", () => {
+          void Promise.allSettled([
+            statelessTransport.close(),
+            statelessServer.close(),
+          ]);
+        });
+        transport = statelessTransport;
+        logEvent(config.logging, "info", "mcp_stateless_fallback", {
+          requestId,
+          method: req.method,
+          ...requestLogFields(req, config),
+        });
       }
 
       await transport.handleRequest(req, res, req.body);
