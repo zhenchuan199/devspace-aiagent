@@ -70,6 +70,8 @@ Requirements:
 - Git for Windows must be installed.
 - Existing uncommitted work must not be reset or overwritten.
 
+If an upstream/global DevSpace installation already exists on the machine, do not uninstall it by default. This repository is self-contained at the source/build level and should be invoked through its own `dist\cli.js` and repository launchers. Avoid the bare global `devspace` command during deployment because it may resolve to a different installation.
+
 The included launchers discover Git Bash automatically. `DEVSPACE_GIT_BASH` may be used only when automatic discovery cannot find the intended Bash executable.
 
 ## 2. Install and build the repository
@@ -90,6 +92,8 @@ The built runtime entry point is:
 ```text
 dist\cli.js
 ```
+
+Use repository-local commands such as `node .\dist\cli.js ...`; do not depend on a globally installed `@waishnav/devspace` package.
 
 ## 3. Configure DevSpace
 

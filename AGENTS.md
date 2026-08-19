@@ -23,6 +23,8 @@ The repository-root Windows helpers are part of the supported product surface:
 
 Keep those helpers compatible with both Windows 10 and Windows 11. Task Scheduler must receive concrete absolute paths at registration time, but those paths must be resolved dynamically from the current checkout rather than hard-coded in source.
 
+An existing global/upstream DevSpace installation may coexist with this repository. Do not uninstall it unless the user explicitly requests removal. For this distribution, do not invoke a bare global `devspace` command; use the current checkout's `dist/cli.js` and repository launchers so the agent cannot accidentally configure or start a different installation.
+
 `README.md` is the Windows deployment/operations runbook for AI agents. Write it as executable guidance for an agent configuring a user's Windows 10/11 machine: inspect first, preserve existing state, use concrete commands, define expected results, and verify each boundary. It is not primarily end-user marketing or prose documentation.
 
 ## Skill catalog invariants
