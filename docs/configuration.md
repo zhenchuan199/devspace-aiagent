@@ -132,12 +132,12 @@ DevSpace discovers standard Agent Skills from:
 
 - `~/.agents/skills`
 - project `.agents/skills`
-- `~/.devspace/skills`
+- `~/.codex/skills` by default through `DEVSPACE_AGENT_DIR`
 
 It also keeps compatibility with:
 
-- the bundled `subagent-delegation` skill when `DEVSPACE_SUBAGENTS=1`, unless `~/.devspace/skills/subagent-delegation/SKILL.md` exists
-- `DEVSPACE_AGENT_DIR/skills`, defaulting to `~/.codex/skills`
+- the bundled `subagent-delegation` skill when `DEVSPACE_SUBAGENTS=1` and no configured Skill catalog already provides it
+- a relocated `DEVSPACE_AGENT_DIR/skills`
 - additional paths from `DEVSPACE_SKILL_PATHS`
 
 When Subagents are enabled, DevSpace discovers agent profiles

@@ -1,3 +1,43 @@
+# DevSpace Windows Distribution — Agent Instructions
+
+This repository is a directly usable Windows distribution derived from upstream DevSpace. It is intended to be cloned and run as-is on Windows 10 or Windows 11; users should not need a separate upstream checkout, a global npm Junction, or the original developer's filesystem layout.
+
+## Portability requirements
+
+Do not introduce developer-specific paths, usernames, hostnames, or drive letters into runtime code, deployment scripts, or documentation.
+
+Use repository-relative and environment-derived locations:
+
+- PowerShell scripts use `$PSScriptRoot`.
+- Node scripts derive the repository root from `import.meta.url`.
+- Resolve `node.exe` from `PATH` when registering Windows tasks.
+- Discover Git Bash from Git for Windows or `DEVSPACE_GIT_BASH`.
+- Runtime host, port, allowed roots, and public URL come from DevSpace configuration.
+- Documentation uses placeholders such as `<username>`, `<your-hostname>`, and `C:\path\to\project`.
+
+The repository-root Windows helpers are part of the supported product surface:
+
+- `start-devspace.mjs` — hidden/background Scheduled Task bootstrap.
+- `start-devspace.ps1` — foreground diagnostic launcher.
+- `register-devspace-task.ps1` — installs the per-user Windows Scheduled Task.
+
+Keep those helpers compatible with both Windows 10 and Windows 11. Task Scheduler must receive concrete absolute paths at registration time, but those paths must be resolved dynamically from the current checkout rather than hard-coded in source.
+
+`README.md` is the Windows deployment/operations runbook for AI agents. Write it as executable guidance for an agent configuring a user's Windows 10/11 machine: inspect first, preserve existing state, use concrete commands, define expected results, and verify each boundary. It is not primarily end-user marketing or prose documentation.
+
+## Skill catalog invariants
+
+Do not use `~/.devspace/skills` as a Skill location. `~/.devspace` is DevSpace configuration/state only.
+
+Default global Skill catalogs are:
+
+- `~/.agents/skills`
+- `~/.codex/skills` through the default `DEVSPACE_AGENT_DIR`
+
+Workspace-local Skills are discovered from `<workspace>/.agents/skills`. `DEVSPACE_SKILL_PATHS` may add explicit extra locations, and `DEVSPACE_AGENT_DIR` may intentionally relocate the Codex/agent directory. Keep `list_skills`, `read_skill`, workspace Skill discovery, schemas, tests, and documentation consistent with this model.
+
+Before finishing changes intended for redistribution, search tracked files for accidental personal paths or hostnames.
+
 # DevSpace
 
 DevSpace is a local development execution layer for MCP hosts such as ChatGPT and Claude. It gives a remote host workspace-scoped tools for reading, editing, searching, running commands, managing Git worktrees, reviewing changes, and coordinating bounded subagents on the user's machine.

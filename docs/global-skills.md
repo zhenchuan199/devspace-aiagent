@@ -5,12 +5,14 @@ project workspace.
 
 ## Discovery roots
 
-The global catalog reuses DevSpace's existing skill loader and includes:
+The default global catalog includes:
 
 - `~/.agents/skills`
-- `~/.devspace/skills`
-- `DEVSPACE_AGENT_DIR/skills` (defaults to `~/.codex/skills`)
-- extra paths configured through `DEVSPACE_SKILL_PATHS`
+- `~/.codex/skills`
+
+`DEVSPACE_AGENT_DIR` can relocate the Codex/agent directory, and
+`DEVSPACE_SKILL_PATHS` can add explicit extra catalogs. DevSpace does not use
+`~/.devspace/skills` as a Skill catalog.
 
 Project-local `.agents/skills` remain workspace-scoped and are still returned
 by `open_workspace`.
@@ -18,8 +20,8 @@ by `open_workspace`.
 On the Windows account:
 
 ```text
-C:\Users\ZhenChuan _Feng\.agents\skills
-C:\Users\ZhenChuan _Feng\.codex\skills
+C:\Users\<username>\.agents\skills
+C:\Users\<username>\.codex\skills
 ```
 
 are therefore discovered automatically with the default configuration.

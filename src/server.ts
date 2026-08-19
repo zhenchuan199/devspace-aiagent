@@ -775,7 +775,7 @@ export function createMcpServer(
       {
         title: "Discover global skills",
         description:
-          "List or search global Agent Skills without opening a workspace. A bare '$' is a complete discovery request; present the returned skill list to the user instead of asking for more input. Also call this when the user asks which skills are available or wants to discover a skill by a partial name. The catalog includes ~/.agents/skills, ~/.devspace/skills, DEVSPACE_AGENT_DIR/skills (normally ~/.codex/skills), and DEVSPACE_SKILL_PATHS.",
+          "List or search global Agent Skills without opening a workspace. A bare '$' is a complete discovery request; present the returned skill list to the user instead of asking for more input. Also call this when the user asks which skills are available or wants to discover a skill by a partial name. The default global catalogs are ~/.agents/skills and ~/.codex/skills; DEVSPACE_AGENT_DIR and DEVSPACE_SKILL_PATHS may explicitly add or relocate configured catalogs.",
         inputSchema: {
           query: z
             .string()
@@ -2028,6 +2028,27 @@ export function createServer(
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true, name: "devspace" });
+  });
+
+  app.get("/api/browser/skills", (req, res) => {
+    const hostname = req.hostname.toLowerCase();
+    const ip = req.ip ?? req.socket.remoteAddress ?? "";
+    const localHostname = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    const localIp = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+
+    if (!localHostname || !localIp) {
+      res.sendStatus(403);
+      return;
+    }
+
+    const loaded = loadGlobalSkills(config);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      skills: loaded.skills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+      })),
+    });
   });
 
   app.all("/mcp", async (req, res) => {

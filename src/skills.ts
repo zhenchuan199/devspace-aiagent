@@ -34,22 +34,22 @@ function hasSubagentDelegationSkill(skillDir: string): boolean {
 
 export function effectiveSkillPaths(config: ServerConfig, cwd: string): string[] {
   const bundledSkills = bundledSkillsDir();
-  const defaultPathCandidates = [
+  const configuredPaths = config.skillPaths.map((path) => resolveSkillPath(path, cwd));
+  const userPathCandidates = [
     join(homedir(), ".agents", "skills"),
     resolve(cwd, ".agents", "skills"),
-    config.devspaceSkillsDir,
     join(config.agentDir, "skills"),
-    config.subagents && !hasSubagentDelegationSkill(config.devspaceSkillsDir)
-      ? bundledSkills
-      : undefined,
   ];
-  const defaultPaths = defaultPathCandidates.filter(
-    (path): path is string => path !== undefined && existsSync(path),
-  );
+  const userPaths = userPathCandidates.filter((path) => existsSync(path));
+  const explicitPaths = configuredPaths.filter((path) => existsSync(path));
+  const bundledPath =
+    config.subagents && ![...userPaths, ...explicitPaths].some(hasSubagentDelegationSkill)
+      ? bundledSkills
+      : undefined;
 
   const seen = new Set<string>();
-  return [...defaultPaths, ...config.skillPaths]
-    .map((path) => resolveSkillPath(path, cwd))
+  return [...userPaths, bundledPath, ...configuredPaths]
+    .filter((path): path is string => path !== undefined)
     .filter((path) => {
       if (seen.has(path)) return false;
       seen.add(path);

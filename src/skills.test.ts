@@ -26,7 +26,7 @@ try {
   const projectRoot = join(root, "project");
   const agentDir = join(root, "agent");
   const explicitSkills = join(root, "explicit-skills");
-  const devspaceSkills = join(root, ".devspace", "skills");
+  const ignoredDevspaceSkills = join(root, ".devspace", "skills");
   const globalAgentsSkills = join(root, ".agents", "skills");
   const projectAgentsSkills = join(projectRoot, ".agents", "skills");
   const globalClaudeSkills = join(root, ".claude", "skills");
@@ -41,7 +41,7 @@ try {
   await mkdir(join(explicitSkills, "duplicate"), { recursive: true });
   await mkdir(join(explicitSkills, "disabled"), { recursive: true });
   await mkdir(join(explicitSkills, "subagent-delegation"), { recursive: true });
-  await mkdir(join(devspaceSkills, "devspace-local-skill"), { recursive: true });
+  await mkdir(join(ignoredDevspaceSkills, "ignored-devspace-skill"), { recursive: true });
 
   await writeFile(
     join(globalAgentsSkills, "agent-global-skill", "SKILL.md"),
@@ -99,14 +99,14 @@ try {
     ].join("\n"),
   );
   await writeFile(
-    join(devspaceSkills, "devspace-local-skill", "SKILL.md"),
+    join(ignoredDevspaceSkills, "ignored-devspace-skill", "SKILL.md"),
     [
       "---",
-      "name: devspace-local-skill",
-      "description: DevSpace local skill description.",
+      "name: ignored-devspace-skill",
+      "description: This directory is not a Skill catalog.",
       "---",
       "",
-      "# DevSpace Local Skill",
+      "# Ignored DevSpace Skill",
     ].join("\n"),
   );
   await writeFile(
@@ -189,7 +189,7 @@ try {
   assert.equal(loaded.skills.some((skill) => skill.name === "claude-global-skill"), true);
   assert.equal(loaded.skills.some((skill) => skill.name === "claude-project-skill"), true);
   assert.equal(loaded.skills.some((skill) => skill.name === "project-skill"), false);
-  assert.equal(loaded.skills.some((skill) => skill.name === "devspace-local-skill"), true);
+  assert.equal(loaded.skills.some((skill) => skill.name === "ignored-devspace-skill"), false);
   assert.equal(loaded.skills.some((skill) => skill.name === "subagent-delegation"), false);
   assert.equal(loaded.skills.filter((skill) => skill.name === "duplicate-skill").length, 1);
   assert.equal(loaded.skills.some((skill) => skill.name === "hidden-skill"), true);
@@ -219,8 +219,8 @@ try {
     false,
   );
   assert.equal(
-    globalLoaded.skills.some((skill) => skill.name === "devspace-local-skill"),
-    true,
+    globalLoaded.skills.some((skill) => skill.name === "ignored-devspace-skill"),
+    false,
   );
   assert.equal(findGlobalSkill(globalLoaded.skills, "$AGENT-GLOBAL-SKILL")?.name, "agent-global-skill");
   assert.equal(
