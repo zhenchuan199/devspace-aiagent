@@ -1,132 +1,53 @@
-# Setup Guide
+# Setup Reference for AI Agents
 
-This guide is for users who want ChatGPT or another MCP host to work in local
-projects through DevSpace.
+`README.md` is the canonical Windows deployment runbook. This page only summarizes setup contracts so they do not drift into a second competing installation guide.
 
-## Requirements
+## Repository preparation
 
-- Node `>=22.19 <27`
-- npm
-- Git
-- Bash, including Git Bash or WSL on Windows
-- a public HTTPS URL that forwards to the local DevSpace server
+Fresh clone:
 
-DevSpace does not create the public tunnel for you. Use Cloudflare Tunnel,
-ngrok, Pinggy, Tailscale Funnel, or your own HTTPS reverse proxy.
-
-## Install And Configure
-
-Run:
-
-```bash
-npx @waishnav/devspace init
+```powershell
+npm.cmd ci --include=dev
+npm.cmd run build
 ```
 
-The setup flow asks one question at a time.
+Use the repository-local CLI:
 
-### Project Roots
-
-Choose the folders ChatGPT is allowed to open through DevSpace. Keep this
-narrow.
-
-Examples:
-
-```text
-~/personal,~/work
+```powershell
+node .\dist\cli.js <command>
 ```
 
-```text
-/Users/alice/dev,/Users/alice/work
+Do not install or invoke `npx @waishnav/devspace` for this distribution.
+
+## Initialization
+
+First deployment on a Windows account:
+
+```powershell
+node .\dist\cli.js init
 ```
 
-```text
-C:\Users\alice\dev,C:\Users\alice\work
-```
+`publicBaseUrl` is optional:
 
-### Local Port
+- `none` / `null` -> local-only MCP operation;
+- `https://<public-origin>` -> remote HTTPS operation.
 
-The default is `7676`.
-
-The local MCP URL is:
+The local endpoint remains:
 
 ```text
 http://127.0.0.1:7676/mcp
 ```
 
-### Public Base URL
+Remote ingress is a separate deployment layer. Cloudflare Named Tunnel is one option, not a requirement.
 
-Start your tunnel or reverse proxy before entering this value. Point the tunnel
-at:
+## Persistent Windows startup
 
-```text
-http://127.0.0.1:7676
+When requested:
+
+```powershell
+.\register-devspace-task.ps1
 ```
 
-Enter the public origin without `/mcp`:
+This registers the repository-local `DevSpace MCP` Scheduled Task. It does not configure or manage a tunnel.
 
-```text
-https://your-tunnel-host.example.com
-```
-
-Configure the MCP client with the full MCP endpoint:
-
-```text
-https://your-tunnel-host.example.com/mcp
-```
-
-## Start The Server
-
-Run:
-
-```bash
-npx @waishnav/devspace serve
-```
-
-If your tunnel URL changes for one run, override it without rewriting config:
-
-```bash
-DEVSPACE_PUBLIC_BASE_URL="https://new-tunnel.example.com" npx @waishnav/devspace serve
-```
-
-For a stable public URL, persist it:
-
-```bash
-npx @waishnav/devspace config set publicBaseUrl https://devspace.example.com
-npx @waishnav/devspace serve
-```
-
-## Approve The Client
-
-When ChatGPT, Claude, or another MCP client connects, DevSpace shows an Owner
-password approval page. Enter the Owner password printed during setup.
-
-The default config files are:
-
-```text
-~/.devspace/config.json
-~/.devspace/auth.json
-```
-
-Keep `auth.json` private.
-
-## Check Your Setup
-
-Run:
-
-```bash
-npx @waishnav/devspace doctor
-```
-
-The doctor command reports the resolved config, Node version, Node ABI, platform,
-Git, Bash, public URL, allowed hosts, and SQLite native dependency status.
-
-## Running From A Local Checkout
-
-If you are developing DevSpace itself instead of using the published package:
-
-```bash
-npm install --include=dev
-npm run dev
-```
-
-The same setup rules apply.
+For detailed sequencing, verification, and optional Cloudflare guidance, use `README.md`.

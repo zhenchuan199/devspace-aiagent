@@ -94,7 +94,7 @@ async function ensureConfigured(): Promise<void> {
         "DevSpace is not configured and this terminal is non-interactive.",
         "",
         "Run:",
-        "  devspace init",
+        "  node .\\dist\\cli.js init",
         "",
         "Or provide DEVSPACE_OAUTH_OWNER_TOKEN and DEVSPACE_ALLOWED_ROOTS.",
       ].join("\n"),
@@ -108,7 +108,7 @@ async function runInit({ force }: { force: boolean }): Promise<void> {
   const files = loadDevspaceFiles();
   if (!force && files.configExists && files.authExists) {
     prompts.log.info(`DevSpace is already configured at ${files.dir}`);
-    prompts.log.info("Run `devspace init --force` to update it.");
+    prompts.log.info("Run `node .\\dist\\cli.js init --force` to update it.");
     return;
   }
 
@@ -138,21 +138,20 @@ async function runInit({ force }: { force: boolean }): Promise<void> {
 
     prompts.note(
       [
-        "DevSpace needs a public base URL so ChatGPT or Claude can reach this MCP server.",
-        "Create a tunnel or reverse proxy with Cloudflare Tunnel, ngrok, Pinggy, Tailscale Funnel, or your own HTTPS proxy.",
-        "Paste the public origin here, without /mcp.",
-        "",
-        "Example: https://your-tunnel-host.example.com",
+        "A public base URL is optional.",
+        "Use 'none' for local-only MCP access.",
+        "For remote access, enter the HTTPS origin from your tunnel or reverse proxy without /mcp.",
+        "Cloudflare Tunnel is supported but not required.",
       ].join("\n"),
-      "Public URL required",
+      "Public URL optional",
     );
-    const publicBaseUrl = normalizePublicBaseUrl(await textPrompt({
+    const publicBaseUrl = normalizeOptionalPublicBaseUrl(await textPrompt({
       message: files.config.publicBaseUrl
         ? `What is the public base URL? Press Enter to keep ${files.config.publicBaseUrl}`
-        : "What is the public base URL?",
-      placeholder: files.config.publicBaseUrl ?? "https://your-tunnel-host.example.com",
-      defaultValue: files.config.publicBaseUrl ?? "",
-      validate: validateRequiredPublicBaseUrl,
+        : "What is the public base URL? Enter 'none' for local-only mode.",
+      placeholder: files.config.publicBaseUrl ?? "none",
+      defaultValue: files.config.publicBaseUrl ?? "none",
+      validate: validateOptionalPublicBaseUrl,
     }));
 
     const config: DevspaceUserConfig = {
@@ -184,7 +183,7 @@ async function runInit({ force }: { force: boolean }): Promise<void> {
       ].join("\n"),
       "Owner password",
     );
-    prompts.outro("Run `devspace serve` to start the MCP server.");
+    prompts.outro("Run `node .\\dist\\cli.js serve` or the repository launcher to start the MCP server.");
   } catch (error) {
     if (error instanceof SetupCancelledError) {
       prompts.cancel("Setup cancelled");
@@ -289,7 +288,7 @@ function runConfigCommand(args: string[]): void {
     throw new Error(`Unknown config command: ${subcommand}`);
   }
   if (key !== "publicBaseUrl") {
-    throw new Error("Only `devspace config set publicBaseUrl <url|null>` is supported right now.");
+    throw new Error("Only `node .\\dist\\cli.js config set publicBaseUrl <url|null>` is supported right now.");
   }
 
   const value = rest.join(" ").trim();
@@ -310,19 +309,17 @@ function printHelp(): void {
       "DevSpace",
       "",
       "Usage:",
-      "  devspace                 Run first-time setup if needed, then start the server",
-      "  devspace serve           Start the server",
-      "  devspace init            Create or update ~/.devspace/config.json and auth.json",
-      "  devspace doctor          Show config, runtime, and native dependency status",
-      "  devspace config get      Print persisted config",
-      "  devspace config set publicBaseUrl <url|null>",
-      "  devspace agents ls       List subagent sessions",
-      "  devspace agents run <profile-or-provider-or-id> [--model <model>] <prompt>",
-      "  devspace agents show <id>",
-      "  devspace -v, --version   Print the installed version",
+      "  node .\\dist\\cli.js                 Run first-time setup if needed, then start the server",
+      "  node .\\dist\\cli.js serve           Start the server",
+      "  node .\\dist\\cli.js init            Create or update ~/.devspace/config.json and auth.json",
+      "  node .\\dist\\cli.js doctor          Show config, runtime, and native dependency status",
+      "  node .\\dist\\cli.js config get      Print persisted config",
+      "  node .\\dist\\cli.js config set publicBaseUrl <url|null>",
+      "  node .\\dist\\cli.js agents ...      Experimental Subagent CLI",
+      "  node .\\dist\\cli.js -v, --version   Print the installed version",
       "",
-      "For temporary tunnels:",
-      "  DEVSPACE_PUBLIC_BASE_URL=https://example.trycloudflare.com devspace serve",
+      "For one-off remote HTTPS testing in PowerShell:",
+      "  $env:DEVSPACE_PUBLIC_BASE_URL='https://<public-origin>'; node .\\dist\\cli.js serve",
     ].join("\n"),
   );
 }
@@ -628,9 +625,9 @@ function validatePort(value: string | undefined): string | undefined {
     : "Enter a port between 1 and 65535.";
 }
 
-function validateRequiredPublicBaseUrl(value: string | undefined): string | undefined {
+function validateOptionalPublicBaseUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim() ?? "";
-  if (!trimmed) return "Enter the public URL from your tunnel or reverse proxy.";
+  if (!trimmed || trimmed === "none" || trimmed === "null") return undefined;
   if (trimmed.endsWith("/mcp")) return "Enter the base URL only, without /mcp.";
   return validatePublicBaseUrl(trimmed);
 }

@@ -2,6 +2,8 @@
 
 This repository is a directly usable Windows distribution derived from upstream DevSpace. It is intended to be cloned and run as-is on Windows 10 or Windows 11; users should not need a separate upstream checkout, a global npm Junction, or the original developer's filesystem layout.
 
+Local DevSpace and remote ingress are separate deployment layers. The server must remain fully usable on loopback without any public hostname or Cloudflare configuration. Remote HTTPS exposure is optional and user-controlled; Cloudflare Named Tunnel is one supported example, not a product dependency.
+
 ## Portability requirements
 
 Do not introduce developer-specific paths, usernames, hostnames, or drive letters into runtime code, deployment scripts, or documentation.
@@ -24,6 +26,8 @@ The repository-root Windows helpers are part of the supported product surface:
 Keep those helpers compatible with both Windows 10 and Windows 11. Task Scheduler must receive concrete absolute paths at registration time, but those paths must be resolved dynamically from the current checkout rather than hard-coded in source.
 
 An existing global/upstream DevSpace installation may coexist with this repository. Do not uninstall it unless the user explicitly requests removal. For this distribution, do not invoke a bare global `devspace` command; use the current checkout's `dist/cli.js` and repository launchers so the agent cannot accidentally configure or start a different installation.
+
+The supported MCP coding surface is the Codex-style surface. Runtime configuration defaults to `codex`; do not document or reintroduce `minimal` or `full` as supported deployment modes. The expected coding tools are `open_workspace`, `read`, `apply_patch`, `exec_command`, and `write_stdin`.
 
 `README.md` is the Windows deployment/operations runbook for AI agents. Write it as executable guidance for an agent configuring a user's Windows 10/11 machine: inspect first, preserve existing state, use concrete commands, define expected results, and verify each boundary. It is not primarily end-user marketing or prose documentation.
 
@@ -68,7 +72,7 @@ These ideas should stay true as the project evolves:
 - **Allowed root** — a configured filesystem boundary within which a workspace may be opened. It is not itself necessarily a workspace.
 - **Checkout mode** — operating on an existing checkout supplied by the user.
 - **Worktree mode** — operating in an isolated Git worktree.
-- **Tool surface** — the tools exposed by a configured mode, such as minimal, full, or Codex-compatible.
+- **Tool surface** — the fixed Codex-style MCP tools exposed by this distribution.
 - **Process session** — a long-running command tracked for later input, output, or termination.
 - **Instruction file** — an `AGENTS.md` or `CLAUDE.md` discovered while navigating a workspace.
 - **Subagent** — a bounded model invocation delegated and coordinated by the host.
@@ -103,8 +107,8 @@ Determine how the user will consume the change and verify that path. Behavior ma
 - a direct terminal client and a real MCP host;
 - a fresh process and a server or host that needs restarting;
 - checkout mode and worktree mode;
-- Linux, macOS, and Windows Bash environments;
-- minimal, full, and Codex-compatible tool surfaces;
+- Windows 10 and Windows 11 with the repository's Git Bash command path;
+- the fixed Codex-style tool surface;
 - widgets enabled, disabled, or limited to change review.
 
 State clearly when only a narrower proxy was verified. For model-facing schemas, inspect what the host receives. For UI and artifacts, inspect the rendered result rather than inferring success from the producing command.

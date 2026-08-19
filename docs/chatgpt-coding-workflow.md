@@ -142,29 +142,18 @@ Skill paths may be outside the workspace. DevSpace only permits reading:
 
 Set `DEVSPACE_SKILLS=0` to hide skills from workspace output. Set
 `DEVSPACE_SUBAGENTS=1` to expose the experimental subagent catalog and
-`subagent-delegation` skill. That skill teaches the minimal
-`devspace agents ls`, `devspace agents run`, and `devspace agents show`
-workflow. The catalog comes from `open_workspace`; `devspace agents ls` lists
-existing subagent sessions for that workspace.
+`subagent-delegation` skill. The current delegation Skill uses
+`devspace agents ls`, `devspace agents run`, and `devspace agents show`.
+A clean repository-only deployment does not guarantee that a global `devspace`
+executable exists, so do not treat Subagents as part of the default supported
+deployment until an explicit CLI entry point is provided. The catalog comes
+from `open_workspace`; `devspace agents ls` lists existing subagent sessions for
+that workspace.
 
 ## Tool Names
 
-DevSpace exposes these tool names:
-
-- `open_workspace`
-- `read`
-- `write`
-- `edit`
-- `bash`
-
-By default, DevSpace also runs in `DEVSPACE_TOOL_MODE=minimal`, so dedicated
-`grep`, `glob`, and `ls` tools are hidden. Use `bash` with command-line tools
-such as `rg`, `find`, and `ls` for search and directory inspection.
-
-Use `DEVSPACE_TOOL_MODE=full` to restore dedicated search and directory tools.
-
-The experimental Codex-style surface is enabled with
-`DEVSPACE_TOOL_MODE=codex`. It exposes:
+This distribution uses the Codex-style tool surface by default and does not
+expose `minimal` or `full` as supported deployment choices. It exposes:
 
 - `open_workspace`
 - `read`
@@ -172,8 +161,8 @@ The experimental Codex-style surface is enabled with
 - `exec_command`
 - `write_stdin`
 
-In this mode, `write`, `edit`, `bash`, `grep`, `glob`, and `ls` are not
-registered. `exec_command` returns a process session ID when a command is still
+`write`, `edit`, `bash`, `grep`, `glob`, and `ls` are not registered in the
+supported deployment path. `exec_command` returns a process session ID when a command is still
 running after its yield window. Use `write_stdin` to poll it, send input, resize
 a PTY, or send Ctrl-C. Set `tty: true` only for commands that need a terminal.
 
@@ -181,8 +170,8 @@ a PTY, or send Ctrl-C. Set `tty: true` only for commands that need a terminal.
 
 By default, `DEVSPACE_WIDGETS=full`.
 
-In that mode, DevSpace attaches widget UI to the exposed workspace, file, edit,
-and shell tools. The aggregate `show_changes` tool is not exposed by default.
+In that mode, DevSpace attaches widget UI to supported exposed tools. The
+aggregate `show_changes` tool is not exposed by default.
 
 Use `DEVSPACE_WIDGETS=off` to disable widget UI, or `DEVSPACE_WIDGETS=changes`
 to expose the aggregate show-changes flow.
@@ -192,9 +181,9 @@ modification in any turn that changes files. It shows the combined changes for
 that turn and advances the review point automatically. Reusing a workspace does
 not change this workflow.
 
-## Shell Use
+## Command Use
 
-The shell tool is for commands that belong in a terminal:
+`exec_command` is for commands that belong in a terminal:
 
 - tests
 - builds
@@ -202,5 +191,5 @@ The shell tool is for commands that belong in a terminal:
 - package scripts
 - environment checks
 
-File writes should go through the edit/write tools rather than shell
-redirection, heredocs, `tee`, `sed -i`, or generated scripts.
+File modifications should go through `apply_patch`. Use `exec_command` for
+inspection, tests, builds, package scripts, and other terminal work.

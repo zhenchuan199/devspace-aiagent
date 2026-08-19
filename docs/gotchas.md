@@ -1,249 +1,183 @@
-# Troubleshooting Gotchas
+# Troubleshooting — Windows Distribution
 
-This page collects the setup issues users are most likely to hit.
+Use repository-local commands throughout:
 
-## `devspace` Command Not Found
-
-Use `npx`:
-
-```bash
-npx @waishnav/devspace init
-npx @waishnav/devspace serve
+```powershell
+node .\dist\cli.js <command>
 ```
 
-If you installed globally, confirm npm's global bin directory is on `PATH`.
+Do not fall back to `npx @waishnav/devspace` or a bare global `devspace` command while diagnosing this distribution.
 
-## Unsupported Node Version
+## `dist\cli.js` is missing
 
-DevSpace requires Node `>=22.19 <27`.
+Fresh clones do not contain `dist/` or `node_modules/`.
 
-Check:
+```powershell
+npm.cmd ci --include=dev
+npm.cmd run build
+```
 
-```bash
+## Unsupported Node version
+
+```powershell
 node --version
 ```
 
-Install Node 22 LTS with your preferred version manager such as `nvm`, `fnm`, or
-`mise`.
+Required: `>=22.19 <27`.
 
-## `better-sqlite3` Could Not Load
+## `better-sqlite3` cannot load
 
-This usually means native dependencies were installed under a different Node
-runtime.
+First make sure dependencies were installed using the same active Node runtime:
 
-Try:
-
-```bash
-npm rebuild better-sqlite3
+```powershell
+npm.cmd rebuild better-sqlite3
+node .\dist\cli.js doctor
 ```
 
-Then run:
+## Local-only operation
 
-```bash
-npx @waishnav/devspace doctor
+No tunnel is required. Persist local-only mode with:
+
+```powershell
+node .\dist\cli.js config set publicBaseUrl null
 ```
 
-Release starts run a native dependency check before launching.
+Then verify:
 
-## Public URL Includes `/mcp`
+```powershell
+Invoke-WebRequest -Uri 'http://127.0.0.1:7676/healthz' -UseBasicParsing
+```
 
-Use the origin for setup:
+## Public URL includes `/mcp`
+
+Wrong:
 
 ```text
-https://your-tunnel-host.example.com
+https://example.com/mcp
 ```
 
-Use the MCP endpoint in the client:
+Correct `publicBaseUrl`:
 
 ```text
-https://your-tunnel-host.example.com/mcp
+https://example.com
 ```
 
-If you saved the wrong value:
-
-```bash
-npx @waishnav/devspace config set publicBaseUrl https://your-tunnel-host.example.com
-```
-
-## Tunnel URL Changed
-
-Temporary tunnels often change URLs between runs.
-
-For a one-off run:
-
-```bash
-DEVSPACE_PUBLIC_BASE_URL="https://new-tunnel.example.com" npx @waishnav/devspace serve
-```
-
-For a stable URL:
-
-```bash
-npx @waishnav/devspace config set publicBaseUrl https://devspace.example.com
-```
-
-## Host Header Or 403 Problems
-
-DevSpace derives allowed hosts from the configured public URL.
-
-Run:
-
-```bash
-npx @waishnav/devspace doctor
-```
-
-Confirm the public URL hostname appears in allowed hosts. If you changed tunnel
-URLs, update `publicBaseUrl`.
-
-Use this only for intentional local debugging:
-
-```bash
-DEVSPACE_ALLOWED_HOSTS="*" npx @waishnav/devspace serve
-```
-
-## OAuth Redirect Host Rejected
-
-By default, DevSpace allows redirects for:
+Client endpoint:
 
 ```text
-chatgpt.com
-localhost
-127.0.0.1
+https://example.com/mcp
 ```
 
-If another MCP client uses a different redirect host, configure:
+Fix:
 
-```bash
-DEVSPACE_OAUTH_ALLOWED_REDIRECT_HOSTS="chatgpt.com,example.com" npx @waishnav/devspace serve
+```powershell
+node .\dist\cli.js config set publicBaseUrl 'https://example.com'
 ```
 
-## Owner Password Not Accepted
+## Remote URL changed
 
-Make sure you are entering the Owner password from:
+Update only the public origin and restart DevSpace if required:
 
-```text
-~/.devspace/auth.json
+```powershell
+node .\dist\cli.js config set publicBaseUrl 'https://<new-public-origin>'
 ```
 
-To regenerate setup:
+The tunnel/reverse proxy itself is user-controlled infrastructure. Do not assume Cloudflare unless the user selected it.
 
-```bash
-npx @waishnav/devspace init --force
+## Host header / 403 problems
+
+```powershell
+node .\dist\cli.js doctor
+node .\dist\cli.js config get
 ```
+
+Check that the configured public hostname is correct. `DEVSPACE_ALLOWED_HOSTS=*` is an advanced debugging escape hatch and should not be used as a normal fix.
+
+## Owner password not accepted
+
+Do not print `auth.json` into chat. Confirm the operator is using the Owner credential for the same Windows account/config directory as the running DevSpace instance.
+
+Only rerun `init` when the user intentionally wants to reconfigure local state.
 
 ## Unknown `workspaceId`
 
-`workspaceId` values are session identifiers. If the server restarts and the
-client receives an unknown workspace error, call `open_workspace` again for that
-project.
+Call `open_workspace` again and continue with the returned ID. Reuse a valid existing `workspaceId` instead of repeatedly reopening the same checkout.
 
-Workspace session metadata is persisted. ChatGPT may provide optional
-conversation metadata that lets DevSpace resume the same checkout workspace for
-the same project in that conversation; repeated opens reuse the `workspaceId`
-and do not repeat context already provided for that reused checkout. Worktree
-mode always creates a new isolated workspace with its own complete context.
-Hosts without supported conversation metadata receive a normal new workspace.
-In all cases, continue passing the `workspaceId` returned by `open_workspace` to
-later tools. Other MCP hosts use this explicit workspace workflow as well.
+## Workspace path rejected
 
-To review work, call `show_changes` once after the final related file change. It
-shows the combined changes and advances the review point automatically.
+Inspect configured roots:
 
-## Data Retention
-
-DevSpace does not currently prune workspace sessions, conversation bindings,
-or review refs. A future product retention policy will define safe cleanup for
-these records; no automatic deletion is performed today.
-
-## Workspace Path Rejected
-
-The path must be inside one of the allowed roots configured during setup.
-
-Run:
-
-```bash
-npx @waishnav/devspace config get
+```powershell
+node .\dist\cli.js config get
 ```
 
-Then either open a project under an allowed root or rerun setup:
+Open a project inside an allowed root or intentionally update the configuration. Do not broaden allowed roots merely to bypass an error.
 
-```bash
-npx @waishnav/devspace init --force
+## Worktree mode fails
+
+Check:
+
+- Git is installed;
+- the source path is a Git repository;
+- the repository has at least one commit;
+- `baseRef`, when supplied, resolves to a commit.
+
+Uncommitted source checkout changes are not copied into a managed worktree.
+
+## Windows commands fail
+
+The supported command path uses Git Bash semantics. Check:
+
+```powershell
+Get-Command git.exe
+node .\dist\cli.js doctor
 ```
 
-## Worktree Mode Fails
+The repository launchers automatically discover Git Bash. Use `DEVSPACE_GIT_BASH` only as an explicit override.
 
-Worktree mode requires:
+## Skills do not appear
 
-- Git installed
-- the path is inside a Git repository
-- the repository has at least one commit
-- the requested `baseRef` resolves to a commit
+Check the real default catalogs:
 
-For a new repository, create the first commit or use checkout mode.
-
-Uncommitted source checkout changes are not copied into the managed worktree.
-Commit, stash, or ask the model to work in checkout mode if those changes are
-needed.
-
-## Windows Shell Commands Fail
-
-DevSpace shell execution requires Bash. Native PowerShell and `cmd.exe` command
-execution are not supported yet.
-
-Install Git for Windows and use Git Bash, or use WSL, MSYS2, or Cygwin Bash.
-
-Run:
-
-```bash
-npx @waishnav/devspace doctor
+```text
+~/.agents/skills
+~/.codex/skills
 ```
 
-Confirm Bash is detected.
+Workspace-local Skills live at:
 
-## Skills Do Not Appear
-
-Skills are enabled by default. Check:
-
-```bash
-DEVSPACE_SKILLS=1 npx @waishnav/devspace serve
+```text
+<workspace>/.agents/skills
 ```
 
-DevSpace looks in standard Agent Skills locations:
+`~/.devspace/skills` is not loaded. Additional paths require explicit `DEVSPACE_SKILL_PATHS` configuration.
 
-- `~/.agents/skills`
-- project `.agents/skills`
-- `~/.codex/skills` by default through `DEVSPACE_AGENT_DIR`
+## Wrong tools appear
 
-It also checks compatibility and custom paths:
+This distribution supports the Codex tool surface. Expected coding tools include:
 
-- the bundled `subagent-delegation` skill when `DEVSPACE_SUBAGENTS=1` and no configured Skill catalog already provides it
-- a relocated `DEVSPACE_AGENT_DIR/skills`
-- additional paths from `DEVSPACE_SKILL_PATHS`
-
-When `DEVSPACE_SUBAGENTS=1`, DevSpace loads agent profiles from
-`~/.devspace/agents/*.md` and project `.devspace/agents/*.md`, then exposes a
-compact profile catalog through `open_workspace`. The bundled
-`subagent-delegation` skill keeps the model-facing workflow to
-`devspace agents ls`, `devspace agents run`, and `devspace agents show`.
-`devspace agents ls` lists existing subagent sessions, not profile
-definitions.
-
-Packaged agent profile examples under `examples/agents/` are starter templates.
-Copy or adapt them into one of the active profile directories before use.
-
-Legacy project paths such as `.pi/skills` can be added through `DEVSPACE_SKILL_PATHS` when needed.
-
-If a skill appears in `open_workspace`, the model must read that skill's
-`SKILL.md` before reading other files inside the skill directory.
-
-## Review Card Does Not Appear
-
-Per-tool widget cards are enabled by default with:
-
-```bash
-DEVSPACE_WIDGETS=full
+```text
+open_workspace
+read
+apply_patch
+exec_command
+write_stdin
 ```
 
-The aggregate `show_changes` tool is only exposed with
-`DEVSPACE_WIDGETS=changes`. Plain MCP clients may ignore ChatGPT Apps widget
-metadata and only show text results.
+If an MCP host still shows `write`, `edit`, `bash`, `grep`, `glob`, or `ls`, verify that it is connected to this repository's running build rather than an old/global DevSpace process, then refresh the MCP connection after restarting the correct instance.
+
+## Subagent commands are not found
+
+Subagents are experimental and disabled by default. Their current delegation Skill uses `devspace agents ...`. A clean repository-only install does not guarantee a global `devspace` executable.
+
+Do not install upstream DevSpace merely to hide this mismatch. Either keep Subagents disabled or explicitly provide a CLI entry point when testing that experimental feature.
+
+## Scheduled Task is running but the port belongs to another process
+
+An old/global DevSpace instance may still be active. Identify the listener before terminating anything:
+
+```powershell
+Get-NetTCPConnection -LocalPort 7676 -State Listen -ErrorAction SilentlyContinue
+```
+
+The package may remain installed; only conflicting active instances must be resolved.

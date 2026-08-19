@@ -88,6 +88,26 @@ test("global skills can be listed and read without opening a workspace", async (
   assert.equal(responseText(read), "global skill resource\n");
 });
 
+test("the supported deployment exposes the Codex coding surface", async (t) => {
+  const context = await fixture(t);
+  const tools = await context.client.listTools();
+  const names = new Set(tools.tools.map((tool) => tool.name));
+
+  for (const expected of [
+    "open_workspace",
+    "read",
+    "apply_patch",
+    "exec_command",
+    "write_stdin",
+  ]) {
+    assert.equal(names.has(expected), true, `missing supported tool: ${expected}`);
+  }
+
+  for (const legacy of ["write", "edit", "bash", "grep", "glob", "ls"]) {
+    assert.equal(names.has(legacy), false, `legacy tool unexpectedly exposed: ${legacy}`);
+  }
+});
+
 test("concurrent checkout opens return one full context and one reuse instruction", async (t) => {
   const context = await fixture(t);
   const [first, second] = await Promise.all([
@@ -255,7 +275,6 @@ async function fixture(t: TestContext, options: { git?: boolean } = {}): Promise
     DEVSPACE_WORKTREE_ROOT: join(root, ".worktrees"),
     DEVSPACE_AGENT_DIR: agentDir,
     DEVSPACE_WIDGETS: "full",
-    DEVSPACE_TOOL_MODE: "full",
     DEVSPACE_OAUTH_OWNER_TOKEN: "test-owner-token-that-is-long-enough",
     PORT: "1",
   });

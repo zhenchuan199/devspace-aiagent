@@ -47,6 +47,8 @@ Stable profile identifier shown to the model and accepted by:
 devspace agents run <name> "<prompt>"
 ```
 
+`devspace agents ...` is currently an experimental CLI workflow. This Windows distribution does not require a global DevSpace installation, so a clean repository-only deployment must not assume that the bare `devspace` executable is available on `PATH`.
+
 Use lowercase kebab-case names. If omitted, DevSpace uses the filename without
 `.md`.
 
@@ -136,6 +138,8 @@ devspace agents ls
 devspace agents run <profile-or-id> "<prompt>"
 devspace agents show <id>
 ```
+
+This workflow is experimental and is not part of the default Subagents-off deployment. Do not install upstream/global DevSpace merely to make these commands resolve; provide an explicit CLI entry point when intentionally testing Subagents.
 
 `open_workspace` exposes compact profile metadata:
 

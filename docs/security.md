@@ -34,7 +34,13 @@ reach.
 
 ## Owner Password
 
-`devspace init` generates an Owner password and stores it in:
+The repository-local initialization command generates an Owner password:
+
+```powershell
+node .\dist\cli.js init
+```
+
+It stores the credential in:
 
 ```text
 ~/.devspace/auth.json
@@ -43,10 +49,10 @@ reach.
 When an MCP client connects, DevSpace shows an approval page. Enter the Owner
 password only when you intentionally want that client to access this server.
 
-For env-driven deployments, set a long random value:
+For intentionally env-driven deployments, set a long random value in the process environment. Do not place it in a committed `.env` file. For example in PowerShell:
 
-```bash
-DEVSPACE_OAUTH_OWNER_TOKEN="$(openssl rand -base64 32)"
+```powershell
+$env:DEVSPACE_OAUTH_OWNER_TOKEN = '<long-random-secret>'
 ```
 
 ## Public URL And Host Allowlist
@@ -65,17 +71,17 @@ Do not include `/mcp` in `DEVSPACE_PUBLIC_BASE_URL`.
 By default, DevSpace derives allowed Host headers from the local host and public
 URL. Use `DEVSPACE_ALLOWED_HOSTS=*` only for intentional local debugging.
 
-## Tunnels
+## Optional remote ingress
 
-DevSpace does not manage tunnels. Your tunnel or reverse proxy should point to:
+DevSpace does not require or manage a tunnel. Local-only operation uses the loopback MCP endpoint directly.
+
+When the user chooses remote HTTPS access, the tunnel or reverse proxy should point to:
 
 ```text
 http://127.0.0.1:7676
 ```
 
-Prefer adding Cloudflare Access, Tailscale identity controls, or equivalent
-protection in front of public tunnels. DevSpace OAuth still protects the MCP
-endpoint, but the tunnel URL should not be treated as a secret.
+Cloudflare is one possible implementation, not a requirement. Additional ingress identity controls may be used when appropriate. DevSpace OAuth still protects the MCP endpoint, but a public tunnel URL should not be treated as a secret.
 
 ## Shell Access
 
