@@ -52,7 +52,7 @@ DevSpace and remote ingress are separate concerns.
 
 ```text
 MCP client on the same machine
-  -> http://127.0.0.1:7676/mcp
+  -> http://127.0.0.1:<configured-port>/mcp
   -> DevSpace
 ```
 
@@ -64,7 +64,7 @@ No public hostname, Cloudflare account, or tunnel is required.
 remote MCP host
   -> https://<public-origin>/mcp
   -> user-controlled HTTPS tunnel/reverse proxy
-  -> http://127.0.0.1:7676/mcp
+  -> http://127.0.0.1:<configured-port>/mcp
   -> DevSpace
 ```
 
@@ -72,7 +72,7 @@ Cloudflare Named Tunnel is one supported Windows option, not a DevSpace requirem
 
 ## 1. Inspect the Windows host
 
-Run from PowerShell in the repository root:
+The repository root is the directory created by `git clone`. Run from PowerShell in that directory:
 
 ```powershell
 $PSVersionTable.PSVersion
@@ -84,23 +84,29 @@ node --version
 npm.cmd --version
 git --version
 git status --short
+Get-Item .\package.json, .\package-lock.json, .\start-devspace.mjs, .\start-devspace.ps1, .\register-devspace-task.ps1
 ```
 
 Requirements:
 
 - Node satisfies `>=22.19 <27`.
 - Git for Windows is installed.
+- All listed repository files exist in the clone.
 - Existing uncommitted work is preserved.
 
-The launchers discover Git Bash automatically. `DEVSPACE_GIT_BASH` is only an override when automatic discovery cannot find the intended Git Bash executable.
+The three launcher files in the clone are the supported launchers. Files with the same names outside the Git root belong to another layout and are not installation dependencies. The launchers discover Git Bash automatically. `DEVSPACE_GIT_BASH` is only an override when automatic discovery cannot find the intended Git Bash executable.
 
 ## 2. Install and build
 
-For a fresh clone:
+For a fresh clone, enter the target parent directory, clone the distribution, and build from the new Git root:
 
 ```powershell
+Set-Location -LiteralPath '<parent-directory>'
+git clone https://github.com/zhenchuan199/devspace-aiagent.git
+Set-Location -LiteralPath '.\devspace-aiagent'
 npm.cmd ci --include=dev
 npm.cmd run build
+Get-Item .\dist\cli.js, .\dist\config.js
 ```
 
 `node_modules/` and `dist/` are not committed, so both steps are required after a fresh clone.
@@ -121,13 +127,16 @@ dist\cli.js
 
 ## 3. Initialize local state
 
-Inspect existing state first:
+Inspect existing state first without reading credential contents:
 
 ```powershell
+$devspaceStateDir = Join-Path $env:USERPROFILE '.devspace'
+Test-Path -LiteralPath (Join-Path $devspaceStateDir 'config.json')
+Test-Path -LiteralPath (Join-Path $devspaceStateDir 'auth.json')
 node .\dist\cli.js config get
 ```
 
-If configuration/authentication state does not exist, run once:
+If either state file is absent, the user runs this once in a local interactive PowerShell window under the Windows account that will run DevSpace:
 
 ```powershell
 node .\dist\cli.js init
@@ -149,7 +158,7 @@ publicBaseUrl: none for local-only mode, or https://<public-origin> for remote m
 ~/.devspace/auth.json
 ```
 
-Do not rerun `init` on every startup or update. Do not expose the Owner credential from `auth.json`.
+`init` displays the Owner password. Keep that output in the user's local terminal; an agent must not read, transcribe, log, or commit it. Do not rerun `init` on every startup or update.
 
 If remote HTTPS is configured later, update only the public origin:
 
@@ -192,10 +201,10 @@ Foreground diagnostic run:
 .\start-devspace.ps1
 ```
 
-From another PowerShell process:
+From another PowerShell process, use the port reported by `config get`:
 
 ```powershell
-Invoke-WebRequest -Uri 'http://127.0.0.1:7676/healthz' -UseBasicParsing
+Invoke-WebRequest -Uri 'http://127.0.0.1:<configured-port>/healthz' -UseBasicParsing
 ```
 
 Expected: HTTP 200.
@@ -203,10 +212,10 @@ Expected: HTTP 200.
 For a local MCP client, the endpoint is:
 
 ```text
-http://127.0.0.1:7676/mcp
+http://127.0.0.1:<configured-port>/mcp
 ```
 
-If another process already occupies the configured port, identify it before changing or terminating anything. An old/global DevSpace installation may remain installed, but two active instances cannot bind the same address and port.
+If another process already occupies the configured port, identify it before changing or terminating anything. An old/global DevSpace installation may remain installed, but two active instances cannot bind the same address and port. After the foreground check, stop this launcher with `Ctrl+C` before registering the Scheduled Task; otherwise the task bootstrap sees the occupied port and exits instead of owning the persistent process.
 
 ## 6. Optional remote HTTPS exposure
 
@@ -217,7 +226,7 @@ DevSpace does not own tunnel lifecycle. The user chooses and controls the remote
 The remote proxy/tunnel should forward the public origin to:
 
 ```text
-http://127.0.0.1:7676
+http://127.0.0.1:<configured-port>
 ```
 
 The MCP client then uses:
@@ -235,7 +244,7 @@ node .\dist\cli.js config set publicBaseUrl 'https://<public-origin>'
 Verify both boundaries:
 
 ```powershell
-Invoke-WebRequest -Uri 'http://127.0.0.1:7676/healthz' -UseBasicParsing
+Invoke-WebRequest -Uri 'http://127.0.0.1:<configured-port>/healthz' -UseBasicParsing
 Invoke-WebRequest -Uri 'https://<public-origin>/healthz' -UseBasicParsing
 ```
 
@@ -247,23 +256,24 @@ Inspect first:
 
 ```powershell
 Get-Command cloudflared.exe -ErrorAction SilentlyContinue
-Get-Service Cloudflared -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Service -Filter "Name='Cloudflared'" -ErrorAction SilentlyContinue |
+  Select-Object Name, State, StartMode
 ```
 
-Create/select a persistent Named Tunnel in the Cloudflare dashboard, install its Windows connector using Cloudflare's generated command, and publish a route whose service is:
+Create or select a dashboard-managed Named Tunnel. Cloudflare's generated Windows connector command contains a Tunnel token, so the user runs it in an elevated local terminal; do not pass that command through agent tools or chat. Publish a route whose service is:
 
 ```text
-http://127.0.0.1:7676
+http://127.0.0.1:<configured-port>
 ```
 
-Use the user's chosen hostname as the DevSpace `publicBaseUrl`. Run `cloudflared` as a Windows service when the user wants the remote endpoint to survive reboot.
+Use the user's chosen hostname as the DevSpace `publicBaseUrl`. The generated connector installation should leave `Cloudflared` running as an automatic Windows service. Keep this dashboard-managed token flow separate from the locally-managed `config.yml` flow.
 
 Never store the tunnel token in this repository, documentation, logs, or chat.
 
 Official references:
 
-- <https://developers.cloudflare.com/tunnel/setup/>
-- <https://developers.cloudflare.com/tunnel/advanced/local-management/as-a-service/windows/>
+- <https://developers.cloudflare.com/tunnel/get-started/>
+- <https://developers.cloudflare.com/cloudflare-one/networks/routes/add-routes/>
 
 ## 7. Optional DevSpace logon auto-start
 
@@ -281,20 +291,31 @@ Roles:
 - `start-devspace.ps1` — foreground diagnostic launcher.
 - `register-devspace-task.ps1` — registers the per-user `DevSpace MCP` Scheduled Task.
 
-After a successful build, run from elevated PowerShell when the user wants automatic startup:
+After a successful build and after stopping the foreground diagnostic process, run from elevated PowerShell under the same Windows identity that owns `~/.devspace/config.json` and `~/.devspace/auth.json`:
 
 ```powershell
 .\register-devspace-task.ps1
 ```
 
-Verify:
+The current script requires that identity to be an administrator. If elevation switches to another account, stop instead of registering the task against the wrong profile. Verify the task, configured listener, and health endpoint separately:
 
 ```powershell
-Get-ScheduledTask -TaskName 'DevSpace MCP'
-Get-ScheduledTaskInfo -TaskName 'DevSpace MCP'
+Get-ScheduledTask -TaskName 'DevSpace MCP' | Select-Object TaskName, State
+Get-ScheduledTaskInfo -TaskName 'DevSpace MCP' | Select-Object LastRunTime, LastTaskResult
+Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort <configured-port> -State Listen
+Invoke-WebRequest -Uri 'http://127.0.0.1:<configured-port>/healthz' -UseBasicParsing
 ```
 
-If the repository is moved or renamed, rerun the registration script from the new location.
+The task uses an `AtLogOn` trigger and starts after this Windows user logs in; it is not a pre-login system service. If the repository is moved or renamed, or the Node installation path changes, rerun the registration script from the new location.
+
+For a dashboard-managed Cloudflare connector, verify automatic service state without printing its command line, which may contain a Tunnel token:
+
+```powershell
+Get-CimInstance Win32_Service -Filter "Name='Cloudflared'" |
+  Select-Object Name, State, StartMode
+```
+
+Expected: `State` is `Running` and `StartMode` is `Auto`. A full restart test proves that cloudflared starts before login and DevSpace becomes available after the intended user logs in. If no restart test was performed, report startup as configured but not reboot-verified.
 
 Do not restart this task from a ChatGPT session currently connected through that same DevSpace instance.
 
@@ -303,7 +324,7 @@ Do not restart this task from a ChatGPT session currently connected through that
 Use the endpoint matching the selected deployment mode:
 
 ```text
-local:  http://127.0.0.1:7676/mcp
+local:  http://127.0.0.1:<configured-port>/mcp
 remote: https://<public-origin>/mcp
 ```
 
